@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cribbage Game (Online) - Multiplayer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Lato', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, .card-suit, .font-cinzel {
+            font-family: 'Cinzel', serif;
+        }
+
+        .playing-card {
+            width: 70px;
+            height: 100px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 8px;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            user-select: none;
+            border: 1px solid #cbd5e1;
+        }
+        
+        @media (min-width: 768px) {
+             .playing-card { width: 90px; height: 130px; }
+        }
+
+        .playing-card:hover:not(.disabled):not(.hidden-card) {
+            transform: translateY(-10px);
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.4);
+        }
+
+        .playing-card.selected {
+            transform: translateY(-20px) !important;
+            border: 2px solid #fbbf24;
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.6);
+        }
+
+        .playing-card.disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+            filter: grayscale(0.5);
+            transform: none !important;
+        }
+
+        .playing-card.hidden-card {
+            background: repeating-linear-gradient(45deg, #b91c1c, #b91c1c 10px, #991b1b 10px, #991b1b 20px);
+            border: 2px solid #fff;
+            cursor: default;
+        }
+
+        .card-value { font-size: 1.25rem; font-weight: bold; line-height: 1; }
+        @media (min-width: 768px) { .card-value { font-size: 1.5rem; } }
+        .card-suit { font-size: 1.5rem; align-self: center; flex-grow: 1; display: flex; align-items: center; }
+        @media (min-width: 768px) { .card-suit { font-size: 2.5rem; } }
+
+        .suit-hearts, .suit-diamonds { color: #dc2626; }
+        .suit-spades, .suit-clubs { color: #1e293b; }
+        .bottom-val { align-self: flex-end; transform: rotate(180deg); }
+
+        .play-zone {
+            min-height: 140px;
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .hand-container {
+            display: flex;
+            justify-content: center;
+            gap: -20px;
+            min-height: 110px;
+        }
+        @media (min-width: 768px) { .hand-container { min-height: 140px; } }
+        .hand-container .playing-card { margin: 0 4px; }
+
+        .board-container {
+            background-color: #b45309;
+            background-image: 
+                radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,0.3) 100%),
+                repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,0.05) 2px, rgba(0,0,0,0.05) 4px);
+            border: 6px solid #78350f;
+            border-radius: 12px;
+            padding: 10px;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 10px 20px rgba(0,0,0,0.5);
+            position: relative;
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+        
+        .track-row { display: flex; align-items: center; margin-bottom: 8px; width: max-content; }
+        .track-group {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+            background: rgba(0,0,0,0.1); padding: 4px; border-radius: 6px; margin-right: 6px;
+        }
+
+        .board-hole {
+            width: 10px; height: 10px; background-color: #451a03; border-radius: 50%;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.8), 0 1px 1px rgba(255,255,255,0.2);
+            position: relative;
+        }
+
+        .board-peg {
+            width: 12px; height: 20px; border-radius: 6px 6px 2px 2px;
+            position: absolute; bottom: 2px; left: -1px;
+            box-shadow: -2px 2px 4px rgba(0,0,0,0.5), inset -2px 0 4px rgba(0,0,0,0.3);
+            z-index: 10; transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform-origin: bottom center;
+        }
+        .board-peg::after {
+             content: ''; position: absolute; top: 2px; left: 2px; width: 4px; height: 4px;
+             background: rgba(255,255,255,0.6); border-radius: 50%;
+        }
+
+        @keyframes deal { from { opacity: 0; transform: translateY(-50px) scale(0.8); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .animate-deal { animation: deal 0.4s ease-out forwards; }
+        
+        @keyframes pulse-border {
+            0% { border-color: rgba(251, 191, 36, 0.5); box-shadow: 0 0 0 rgba(251, 191, 36, 0); }
+            50% { border-color: rgba(251, 191, 36, 1); box-shadow: 0 0 15px rgba(251, 191, 36, 0.5); }
+            100% { border-color: rgba(251, 191, 36, 0.5); box-shadow: 0 0 0 rgba(251, 191, 36, 0); }
+        }
+        .highlight-zone { animation: pulse-border 1.5s infinite; border: 2px solid rgba(251,191,36,0.5); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+    </style>
+</head>
+<body class="p-2 md:p-4 text-sm md:text-base">
+
+    <header class="text-center mb-4">
+        <h1 class="text-3xl md:text-4xl font-bold text-yellow-400 drop-shadow-lg tracking-wider mb-2 font-cinzel">CRIBBAGE</h1>
+        
+        <div class="max-w-4xl mx-auto bg-slate-800/80 p-4 rounded-xl border border-slate-600 shadow-xl flex flex-col md:flex-row items-center gap-4">
+            <div id="scoreboard-container" class="flex flex-wrap justify-center gap-4 w-full md:w-auto flex-grow order-2 md:order-1">
+                <!-- Player scores injected dynamically -->
+            </div>
+            
+            <div class="order-1 md:order-2 w-full md:w-auto text-center md:text-right">
+                <div class="text-xs uppercase tracking-widest text-slate-400 mb-1">Target: 121</div>
+                <div class="font-semibold text-yellow-300 bg-slate-900/80 px-4 py-1 rounded-full border border-slate-700 whitespace-nowrap" id="game-phase-text">Waiting to start...</div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-4 flex-grow">
+        
+        <!-- Center/Left Column (Play Area) -->
+        <div class="lg:col-span-3 flex flex-col gap-4">
+            
+            <!-- Opponents Container -->
+            <div id="opponents-container" class="flex flex-wrap justify-around gap-4 bg-slate-800/60 p-4 rounded-xl border border-slate-700 min-h-[140px]">
+                <!-- Opponent Hands generated dynamically -->
+            </div>
+
+            <!-- Play Area (Pegging) -->
+            <div class="bg-slate-800/80 p-4 rounded-xl border border-slate-600 shadow-xl flex-grow flex flex-col min-h-[200px]">
+                <div class="flex justify-between items-center mb-2">
+                    <div class="text-slate-300 font-semibold">Play Area</div>
+                    <div class="bg-slate-900 px-3 py-1 rounded text-yellow-400 font-mono font-bold">
+                        Peg Count: <span id="peg-count-display">0</span>
+                    </div>
+                </div>
+                
+                <div id="pegging-zone" class="play-zone flex-grow">
+                    <div class="text-slate-500 italic text-center" id="pegging-placeholder">Cards played will appear here...</div>
+                </div>
+                
+                <div class="mt-4 flex justify-between text-sm text-slate-400">
+                    <div id="dealer-indicator">Dealer: <span class="text-white font-bold" id="current-dealer">-</span></div>
+                    <div><span class="text-white font-bold" id="whose-turn">-</span></div>
+                </div>
+            </div>
+
+            <!-- Local Player Hand -->
+            <div class="bg-slate-800/60 p-4 rounded-xl border border-slate-700 shadow-lg relative">
+                <div class="absolute top-2 left-4 text-slate-400 text-sm font-bold">Your Hand</div>
+                <div id="player-hand" class="hand-container mt-4"></div>
+                
+                <div class="mt-4 text-center min-h-[40px]">
+                    <button id="action-btn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-8 rounded-full shadow-lg transition-colors hidden">Confirm Discard</button>
+                    <button id="go-btn" class="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2 px-8 rounded-full shadow-lg transition-colors hidden">Say "Go"</button>
+                    <button id="next-phase-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-8 rounded-full shadow-lg transition-colors hidden">Next Phase</button>
+                    <div id="waiting-text" class="text-slate-400 italic hidden animate-pulse">Waiting for others...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column (Board, Crib, Deck) -->
+        <div class="flex flex-col gap-4">
+            
+            <div class="bg-slate-800/80 p-4 rounded-xl border border-slate-600 shadow-xl hidden md:block">
+                 <div class="text-sm text-slate-400 mb-2 uppercase tracking-wide font-bold">Board</div>
+                 <div class="board-container w-full" id="cribbage-board-ui">
+                     <!-- Tracks generated dynamically -->
+                 </div>
+            </div>
+
+            <div class="bg-slate-800/80 p-4 rounded-xl border border-slate-600 shadow-xl flex justify-around items-center">
+                <div class="text-center">
+                    <div class="text-xs text-slate-400 mb-2 uppercase tracking-wide">Deck</div>
+                    <div class="playing-card hidden-card mx-auto shadow-[2px_2px_0px_#0f172a,4px_4px_0px_#0f172a]" style="width:60px; height:85px;"></div>
+                </div>
+                <div class="text-center">
+                    <div class="text-xs text-slate-400 mb-2 uppercase tracking-wide">Starter</div>
+                    <div id="starter-card-zone" class="min-w-[60px] min-h-[85px] border-2 border-dashed border-slate-600 rounded-lg flex items-center justify-center bg-slate-900/50"></div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/80 p-4 rounded-xl border border-slate-600 shadow-xl flex-grow">
+                <div class="text-sm text-slate-400 mb-2 uppercase tracking-wide text-center font-bold">The Crib <span id="crib-owner" class="text-white text-xs ml-1"></span></div>
+                <div id="crib-zone" class="play-zone flex-col min-h-[100px]">
+                    <div class="text-slate-500 text-sm text-center" id="crib-placeholder">Waiting...</div>
+                </div>
+            </div>
+
+            <div class="bg-slate-900 p-3 rounded-xl border border-slate-700 shadow-inner h-40 flex flex-col">
+                <div class="text-xs text-slate-500 uppercase tracking-widest border-b border-slate-700 pb-1 mb-1 font-bold flex justify-between">
+                    <span>Game Log</span>
+                    <span id="network-indicator" class="text-emerald-500 hidden" title="Connected"><i class="fas fa-wifi"></i></span>
+                </div>
+                <div id="game-log" class="overflow-y-auto flex-grow text-xs space-y-1 pr-1 font-mono custom-scrollbar"></div>
+            </div>
+        </div>
+    </main>
+
+    <div id="lobby-screen" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 backdrop-blur-sm overflow-y-auto p-4">
+        <div class="bg-slate-800 p-6 md:p-8 rounded-2xl max-w-2xl w-full border border-slate-600 shadow-2xl mx-auto my-auto">
+            <h2 class="text-3xl md:text-5xl text-yellow-400 font-cinzel font-bold mb-2 text-center drop-shadow-md">Cribbage</h2>
+            <p class="text-center text-slate-400 mb-8 font-mono text-sm">N-Player Multiplayer Edition</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- Host Panel -->
+                <div class="bg-slate-900/50 p-6 rounded-xl border border-slate-700">
+                    <h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-home mr-2 text-blue-400"></i>Host a Game</h3>
+                    <div class="space-y-4">
+                        <button id="btn-create-room" class="w-full bg-blue-600 hover:bg-blue-500 p-3 rounded-lg text-white font-bold shadow-lg transition-colors">Create Room</button>
+                        
+                        <div id="host-room-info" class="hidden text-center">
+                            <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Room Code</p>
+                            <div id="display-room-id" class="text-2xl font-mono text-yellow-400 bg-slate-800 py-2 rounded-lg font-bold border border-slate-600 select-all mb-4">...</div>
+                            
+                            <h4 class="text-sm font-bold text-slate-300 mb-2 border-b border-slate-700 pb-1 text-left">Players (Max 4)</h4>
+                            <ul id="lobby-players-list" class="text-left space-y-2 mb-4 min-h-[60px]">
+                                <!-- Player items injected here -->
+                            </ul>
+                            
+                            <div class="flex gap-2 mb-4">
+                                <button id="btn-add-ai" class="flex-1 bg-slate-700 hover:bg-slate-600 p-2 rounded text-sm text-white font-bold transition-colors border border-slate-500">+ Add AI</button>
+                                <button id="btn-remove-ai" class="bg-slate-700 hover:bg-slate-600 p-2 rounded text-sm text-red-400 font-bold transition-colors border border-slate-500" disabled><i class="fas fa-trash"></i></button>
+                            </div>
+                            
+                            <button id="btn-start-game" class="w-full bg-emerald-600 hover:bg-emerald-500 p-3 rounded-lg text-white font-bold shadow-lg transition-colors text-lg" disabled>Start Game</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Join Panel -->
+                <div class="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-sign-in-alt mr-2 text-emerald-400"></i>Join a Game</h3>
+                        <p class="text-sm text-slate-400 mb-4">Have a room code from a friend? Paste it below to join their game.</p>
+                        
+                        <input type="text" id="input-join-id" placeholder="Enter Room Code" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-white font-mono placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-center text-lg mb-4 uppercase">
+                        
+                        <button id="btn-join-room" class="w-full bg-emerald-600 hover:bg-emerald-500 p-3 rounded-lg text-white font-bold shadow-lg transition-colors">Join Game</button>
+                    </div>
+                    
+                    <div id="join-status" class="text-center text-yellow-400 text-sm mt-4 font-mono h-6"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="message-modal" class="fixed inset-0 flex items-center justify-center z-50 hidden bg-slate-900/80 backdrop-blur-sm">
+        <div class="bg-slate-800 border border-slate-600 p-6 md:p-8 rounded-2xl shadow-2xl max-w-md w-full text-center mx-4 transform transition-all scale-95 opacity-0" id="modal-content">
+            <h2 id="modal-title" class="text-3xl font-bold mb-4 font-cinzel">Title</h2>
+            <p id="modal-message" class="text-lg text-slate-200 mb-4">Message goes here.</p>
+            <div id="modal-score-details" class="bg-slate-900 p-3 rounded-lg mb-6 text-left hidden font-mono text-sm h-32 overflow-y-auto custom-scrollbar border border-slate-700"></div>
+            <button id="modal-btn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-full shadow-lg w-full transition-colors text-lg">Continue</button>
+        </div>
+    </div>
+
+    <script>
+        const Suits = { HEARTS: 'hearts', DIAMONDS: 'diamonds', CLUBS: 'clubs', SPADES: 'spades' };
+        const Values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+        const SuitSymbols = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
+        const TargetScore = 121;
+        const PlayerColors = [
+            { bg: 'bg-blue-600', text: 'text-blue-400', border: 'border-blue-500', peg: 'linear-gradient(to right, #2563eb, #60a5fa)', code: 'blue' },
+            { bg: 'bg-red-600', text: 'text-red-400', border: 'border-red-500', peg: 'linear-gradient(to right, #dc2626, #f87171)', code: 'red' },
+            { bg: 'bg-emerald-600', text: 'text-emerald-400', border: 'border-emerald-500', peg: 'linear-gradient(to right, #059669, #34d399)', code: 'green' },
+            { bg: 'bg-purple-600', text: 'text-purple-400', border: 'border-purple-500', peg: 'linear-gradient(to right, #7c3aed, #a78bfa)', code: 'purple' }
+        ];
+
+        // PeerJS room IDs should be long enough to avoid collisions.
+const generateRoomId = () => 'CRIB' + Math.random().toString(36).substring(2, 12).toUpperCase();
+
+        class Card {
+            constructor(suit, value) {
+                this.suit = suit; this.value = value;
+                this.isHidden = false; this.id = `${value}-${suit}`;
+            }
+            get rank() { return Values.indexOf(this.value) + 1; }
+            get cribValue() { return ['J', 'Q', 'K'].includes(this.value) ? 10 : (this.value === 'A' ? 1 : parseInt(this.value)); }
+            get colorClass() { return (this.suit === Suits.HEARTS || this.suit === Suits.DIAMONDS) ? 'suit-hearts' : 'suit-clubs'; }
+
+            createHTML(onClick = null, isSelected = false) {
+                const el = document.createElement('div');
+                el.className = `playing-card animate-deal ${this.isHidden ? 'hidden-card' : ''} ${isSelected ? 'selected' : ''}`;
+                el.dataset.id = this.id;
+                
+                if (!this.isHidden) {
+                    el.innerHTML = `
+                        <div class="card-value ${this.colorClass}">${this.value}</div>
+                        <div class="card-suit ${this.colorClass}">${SuitSymbols[this.suit]}</div>
+                        <div class="card-value bottom-val ${this.colorClass}">${this.value}</div>
+                    `;
+                }
+                if (onClick) el.addEventListener('click', () => onClick(this, el));
+                return el;
+            }
+            static fromId(id) { const [val, suit] = id.split('-'); return new Card(suit, val); }
+        }
+
+        class Deck {
+            constructor() { this.build(); }
+            build() {
+                this.cards = [];
+                for (let suit of Object.values(Suits))
+                    for (let val of Values) this.cards.push(new Card(suit, val));
+            }
+            shuffle() {
+                for (let i = this.cards.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
+                }
+            }
+            deal(num) { return this.cards.splice(0, num); }
+        }
+
+        // We use a deterministic event-sourcing model. The Host broadcasts actions, 
+        // and ALL clients (including Host) process the action symmetrically.
+        class CribbageMultiplayer {
+            constructor() {
+                this.myId = 'local-' + Date.now();
+                this.isHost = false;
+                this.peer = null;
+                this.connections = []; // Only populated if host
+                this.hostConn = null;  // Only populated if client
+
+                this.lobbyPlayers = [];
+                this.players = [];
+                
+                this.scores = {};
+                this.hands = {};
+                this.unplayed = {};
+                this.goStated = {};
+                
+                this.crib = [];
+                this.peggingCards = [];
+                this.starterCard = null;
+                this.pegCount = 0;
+                
+                this.dealerIndex = 0;
+                this.currentTurnIndex = 0;
+                this.phase = 'LOBBY';
+                
+                this.localDiscards = [];
+                this.networkDiscardsReady = {};
+                this.readyForNextPhaseCount = 0;
+
+                this.bindUI();
+                this.setupLobbyEvents();
+            }
+
+            bindUI() {
+                this.els = {
+                    scores: document.getElementById('scoreboard-container'),
+                    board: document.getElementById('cribbage-board-ui'),
+                    opponents: document.getElementById('opponents-container'),
+                    localHand: document.getElementById('player-hand'),
+                    cribZone: document.getElementById('crib-zone'),
+                    peggingZone: document.getElementById('pegging-zone'),
+                    starterZone: document.getElementById('starter-card-zone'),
+                    actionBtn: document.getElementById('action-btn'),
+                    goBtn: document.getElementById('go-btn'),
+                    nextPhaseBtn: document.getElementById('next-phase-btn'),
+                    waitText: document.getElementById('waiting-text'),
+                    log: document.getElementById('game-log'),
+                    pegCount: document.getElementById('peg-count-display'),
+                    whoseTurn: document.getElementById('whose-turn'),
+                    dealer: document.getElementById('current-dealer'),
+                    cribOwner: document.getElementById('crib-owner'),
+                    lobby: document.getElementById('lobby-screen')
+                };
+            }
+
+            log(msg, colorClass = 'text-slate-300') {
+                const p = document.createElement('div');
+                p.textContent = msg; p.className = colorClass;
+                this.els.log.appendChild(p);
+                this.els.log.scrollTop = this.els.log.scrollHeight;
+            }
+
+            setupLobbyEvents() {
+                const btnCreate = document.getElementById('btn-create-room');
+                const btnJoin = document.getElementById('btn-join-room');
+                const btnAddAI = document.getElementById('btn-add-ai');
+                const btnRemAI = document.getElementById('btn-remove-ai');
+                const btnStart = document.getElementById('btn-start-game');
+
+                btnCreate.onclick = () => {
+                    this.isHost = true;
+                    btnCreate.disabled = true;
+                    this.initPeer(generateRoomId(), true);
+                };
+
+                btnJoin.onclick = () => {
+                    const id = document.getElementById('input-join-id').value.trim().toUpperCase();
+                    if (id) {
+                        this.isHost = false;
+                        btnJoin.disabled = true;
+                        this.initPeer(null, false, id);
+                    } else {
+                        document.getElementById('join-status').textContent = "Enter a room code first.";
+                    }
+                };
+
+                document.getElementById('input-join-id').addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') btnJoin.click();
+                });
+
+                btnAddAI.onclick = () => {
+                    if (this.lobbyPlayers.length < 4) {
+                        const count = this.lobbyPlayers.filter(p => p.type === 'ai').length + 1;
+                        this.lobbyPlayers.push({ id: `ai-${Date.now()}`, name: `AI ${count}`, type: 'ai' });
+                        this.updateLobbyUI();
+                    }
+                };
+                
+                btnRemAI.onclick = () => {
+                    for(let i = this.lobbyPlayers.length-1; i>=0; i--) {
+                        if(this.lobbyPlayers[i].type === 'ai') { this.lobbyPlayers.splice(i, 1); break; }
+                    }
+                    this.updateLobbyUI();
+                };
+
+                btnStart.onclick = () => {
+                    if (this.lobbyPlayers.length >= 2) {
+                        this.broadcastAction('START_GAME', { players: this.lobbyPlayers });
+                    }
+                };
+            }
+
+            initPeer(requestedId, asHost, targetId = null) {
+                const statusEl = document.getElementById('join-status');
+                const createBtn = document.getElementById('btn-create-room');
+                const joinBtn = document.getElementById('btn-join-room');
+
+                // Clean up any previous PeerJS instance before reconnecting.
+                if (this.peer && !this.peer.destroyed) {
+                    try { this.peer.destroy(); } catch (e) {}
+                }
+
+                this.connections = [];
+                this.hostConn = null;
+
+                if (asHost) {
+                    document.getElementById('host-room-info').classList.remove('hidden');
+                    statusEl.textContent = "Creating room...";
+                } else {
+                    statusEl.textContent = "Connecting to room...";
+                }
+
+                // Use the official PeerJS cloud broker explicitly.
+                // Host uses the room code as its peer ID; clients get a random ID.
+                // Use the PeerJS Cloud defaults. PeerJS documents 0.peerjs.com/443
+                // as the default cloud broker; avoiding a hand-written path here
+                // prevents path/proxy mismatches.
+                const peerOptions = {
+                    debug: 3,
+                    config: {
+                        iceServers: [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:stun1.l.google.com:19302' }
+                        ],
+                        sdpSemantics: 'unified-plan'
+                    }
+                };
+
+                try {
+                    this.peer = asHost
+                        ? new Peer(requestedId, peerOptions)
+                        : new Peer(peerOptions);
+                } catch (err) {
+                    console.error('PeerJS creation failed:', err);
+                    statusEl.textContent = "Could not start multiplayer networking.";
+                    if (asHost) createBtn.disabled = false;
+                    else joinBtn.disabled = false;
+                    return;
+                }
+
+                const setStatus = (message, cls = 'text-yellow-400') => {
+                    statusEl.textContent = message;
+                    statusEl.className = `text-center ${cls} text-sm mt-4 font-mono min-h-[24px]`;
+                };
+
+                this.peer.on('open', (id) => {
+                    console.log('[PeerJS] Open:', id, 'host:', asHost);
+
+                    if (asHost) {
+                        this.myId = id;
+                        document.getElementById('display-room-id').textContent = id;
+                        this.lobbyPlayers = [
+                            { id: this.myId, name: 'Host (You)', type: 'human' }
+                        ];
+                        this.updateLobbyUI();
+                        setStatus("Room ready. Share the room code with your friend.", 'text-emerald-400');
+                    } else {
+                        this.myId = id;
+                        setStatus("Found room. Connecting to host...");
+
+                        const conn = this.peer.connect(targetId, {
+                            reliable: true,
+                            serialization: 'json'
+                        });
+
+                        this.hostConn = conn;
+                        this.setupClientConn(conn, statusEl, targetId);
+                    }
+                });
+
+                this.peer.on('connection', (conn) => {
+                    if (!this.isHost) return;
+
+                    console.log('[PeerJS] Incoming connection:', conn.peer);
+
+                    if (this.lobbyPlayers.length >= 4) {
+                        conn.close();
+                        return;
+                    }
+
+                    this.connections.push(conn);
+
+                    const removeConnection = () => {
+                        this.connections = this.connections.filter(c => c !== conn);
+                        this.lobbyPlayers = this.lobbyPlayers.filter(p => p.id !== conn.peer);
+                        this.updateLobbyUI();
+                        this.syncLobbyToClients();
+                    };
+
+                    conn.on('open', () => {
+                        console.log('[PeerJS] Client connected:', conn.peer);
+
+                        // Prevent duplicate lobby entries.
+                        if (!this.lobbyPlayers.some(p => p.id === conn.peer)) {
+                            this.lobbyPlayers.push({
+                                id: conn.peer,
+                                name: `Player ${this.lobbyPlayers.length + 1}`,
+                                type: 'human'
+                            });
+                        }
+
+                        this.updateLobbyUI();
+                        this.syncLobbyToClients();
+                        setStatus(`Player connected (${this.lobbyPlayers.length}/4).`, 'text-emerald-400');
+
+                        // Explicit acknowledgement lets the client know the host
+                        // accepted the connection even if lobby sync arrives later.
+                        try {
+                            conn.send({
+                                type: 'CONNECTION_ACK',
+                                payload: { roomId: this.myId }
+                            });
+                        } catch (e) {
+                            console.warn('Could not send connection acknowledgement:', e);
+                        }
+                    });
+
+                    conn.on('data', (data) => {
+                        this.processNetworkMessage(data, conn);
+                    });
+
+                    conn.on('close', removeConnection);
+
+                    conn.on('error', (err) => {
+                        console.error('[PeerJS] Client connection error:', err);
+                        removeConnection();
+                    });
+                });
+
+                this.peer.on('error', (err) => {
+                    console.error('[PeerJS] Peer error:', err);
+
+                    const messages = {
+                        'unavailable-id': 'That room code is already in use. Create a new room.',
+                        'peer-unavailable': 'Room not found. Double-check the room code.',
+                        'network': 'Could not reach the multiplayer signaling server.',
+                        'server-error': 'The multiplayer server rejected the connection.',
+                        'socket-error': 'The multiplayer signaling socket failed.',
+                        'socket-closed': 'The multiplayer signaling socket closed.',
+                        'invalid-id': 'Invalid room code.',
+                        'browser-incompatible': 'This browser does not support the required WebRTC features.',
+                        'ssl-unavailable': 'Secure multiplayer is unavailable on this connection.',
+                        'webrtc': 'WebRTC could not establish the peer connection.'
+                    };
+
+                    const detail = err?.message ? ` ${err.message}` : '';
+                    setStatus((messages[err.type] || `Connection error: ${err.type || 'unknown error'}`) + detail, 'text-red-400');
+                    const dbg = document.getElementById('network-debug');
+                    if (dbg) dbg.textContent = `PeerJS error: ${err.type || 'unknown'}${detail}`;
+
+                    if (asHost) {
+                        createBtn.disabled = false;
+                    } else {
+                        joinBtn.disabled = false;
+                    }
+                });
+
+                this.peer.on('disconnected', () => {
+                    console.warn('[PeerJS] Signaling server disconnected.');
+                    setStatus("Multiplayer server disconnected. Reconnecting...", 'text-yellow-400');
+
+                    // PeerJS can reconnect to its signaling server without destroying
+                    // the existing peer ID.
+                    if (this.peer && !this.peer.destroyed) {
+                        setTimeout(() => {
+                            try {
+                                if (this.peer.disconnected) this.peer.reconnect();
+                            } catch (e) {
+                                console.warn('Peer reconnect failed:', e);
+                            }
+                        }, 1000);
+                    }
+                });
+
+                this.peer.on('close', () => {
+                    console.warn('[PeerJS] Peer closed.');
+                });
+            }
+
+            setupClientConn(conn, statusEl, targetId) {
+                const joinBtn = document.getElementById('btn-join-room');
+
+                let connectionTimeout = setTimeout(() => {
+                    if (!conn.open) {
+                        console.warn('[PeerJS] Connection timed out:', targetId);
+                        statusEl.textContent = "Connection timed out. The room may have closed or the network may be blocking WebRTC.";
+                        statusEl.className = "text-center text-red-400 text-sm mt-4 font-mono min-h-[24px]";
+                        const dbg = document.getElementById('network-debug');
+                        if (dbg) dbg.textContent = `Timed out connecting to ${targetId}`;
+                        joinBtn.disabled = false;
+                        try { conn.close(); } catch (_) {}
+                    }
+                }, 12000);
+
+                conn.on('open', () => {
+                    clearTimeout(connectionTimeout);
+                    console.log('[PeerJS] Connected to host:', targetId);
+                    statusEl.textContent = "Connected! Waiting for host to start...";
+                    statusEl.className = "text-center text-emerald-400 text-sm mt-4 font-mono min-h-[24px]";
+                    document.getElementById('network-indicator').classList.remove('hidden');
+                    const dbg = document.getElementById('network-debug');
+                    if (dbg) dbg.textContent = `P2P connected • ${targetId}`;
+                    joinBtn.disabled = true;
+                });
+
+                conn.on('data', (data) => {
+                    if (data?.type === 'CONNECTION_ACK') {
+                        console.log('[PeerJS] Host acknowledged connection.');
+                        return;
+                    }
+                    this.processNetworkMessage(data);
+                });
+
+                conn.on('close', () => {
+                    clearTimeout(connectionTimeout);
+                    console.warn('[PeerJS] Host connection closed.');
+                    document.getElementById('network-indicator').classList.add('hidden');
+                    statusEl.textContent = "Connection to host was lost.";
+                    statusEl.className = "text-center text-red-400 text-sm mt-4 font-mono min-h-[24px]";
+                    joinBtn.disabled = false;
+                });
+
+                conn.on('error', (err) => {
+                    clearTimeout(connectionTimeout);
+                    console.error('[PeerJS] Host connection error:', err);
+                    statusEl.textContent = "Could not connect to that room. Check the code and try again.";
+                    statusEl.className = "text-center text-red-400 text-sm mt-4 font-mono min-h-[24px]";
+                    joinBtn.disabled = false;
+                });
+            }
+
+            syncLobbyToClients() {
+                if (!this.isHost) return;
+
+                const msg = { type: 'LOBBY_SYNC', payload: this.lobbyPlayers };
+
+                this.connections.forEach(conn => {
+                    if (conn && conn.open) {
+                        try {
+                            conn.send(msg);
+                        } catch (err) {
+                            console.warn('Failed to sync lobby to', conn.peer, err);
+                        }
+                    }
+                });
+            }
+
+            updateLobbyUI() {
+                if(!this.isHost) return;
+                const list = document.getElementById('lobby-players-list');
+                list.innerHTML = this.lobbyPlayers.map(p => 
+                    `<li class="flex items-center gap-2"><i class="fas ${p.type==='ai'?'fa-robot text-slate-400':'fa-user text-emerald-400'}"></i> <span class="text-white">${p.name}</span></li>`
+                ).join('');
+                
+                const hasAI = this.lobbyPlayers.some(p => p.type === 'ai');
+                document.getElementById('btn-remove-ai').disabled = !hasAI;
+                document.getElementById('btn-add-ai').disabled = this.lobbyPlayers.length >= 4;
+                document.getElementById('btn-start-game').disabled = this.lobbyPlayers.length < 2;
+            }
+
+            sendAction(type, payload) {
+                const msg = { type, payload };
+
+                if (this.isHost) {
+                    // Host always processes its own action.
+                    this.processNetworkMessage(msg);
+
+                    // Only send through connections that are actually open.
+                    this.connections.forEach(conn => {
+                        if (conn && conn.open) {
+                            try {
+                                conn.send(msg);
+                            } catch (err) {
+                                console.warn('Failed to send to client:', conn.peer, err);
+                            }
+                        }
+                    });
+                } else {
+                    if (this.hostConn && this.hostConn.open) {
+                        try {
+                            this.hostConn.send(msg);
+                        } catch (err) {
+                            console.warn('Failed to send action to host:', err);
+                            document.getElementById('join-status').textContent = "Connection lost. Please reconnect.";
+                        }
+                    } else {
+                        console.warn('Cannot send action: host connection is not open.');
+                    }
+                }
+            }
+
+            broadcastAction(type, payload) {
+                // Host specific authoritative broadcast
+                if (this.isHost) this.sendAction(type, payload);
+            }
+
+            processNetworkMessage(msg, senderConn = null) {
+                // If Host receives from Client, broadcast it to everyone else and self
+                if (this.isHost && senderConn) {
+                    this.connections.forEach(c => { if(c !== senderConn) c.send(msg); });
+                    this.onAction(msg.type, msg.payload);
+                } 
+                // If Client receives from Host, or Host self-processes
+                else {
+                    this.onAction(msg.type, msg.payload);
+                }
+            }
+
+            onAction(type, payload) {
+                switch(type) {
+                    case 'LOBBY_SYNC': 
+                        if(!this.isHost) document.getElementById('join-status').textContent = `In lobby with ${payload.length} players. Waiting to start...`;
+                        break;
+                    case 'START_GAME': this.handleStartGame(payload.players); break;
+                    case 'DEAL': this.handleDeal(payload); break;
+                    case 'DISCARD': this.handleDiscard(payload); break;
+                    case 'ALL_DISCARDED': this.handleAllDiscarded(payload); break;
+                    case 'PLAY_CARD': this.handlePlayCard(payload); break;
+                    case 'SAY_GO': this.handleSayGo(payload); break;
+                    case 'NEXT_PHASE': this.handleNextPhaseReady(payload); break;
+                    case 'PROCEED_COUNT': this.handleProceedCount(payload); break;
+                }
+            }
+
+            handleStartGame(playersList) {
+                this.els.lobby.classList.add('hidden');
+                document.getElementById('network-indicator').classList.remove('hidden');
+                
+                this.players = playersList.map((p, i) => ({ ...p, color: PlayerColors[i], score: 0 }));
+                this.players.forEach(p => this.scores[p.id] = 0);
+                this.dealerIndex = 0;
+                
+                this.buildDynamicUI();
+                this.log(`Game started with ${this.players.length} players!`, 'text-emerald-400 font-bold');
+                
+                if (this.isHost) setTimeout(() => this.executeDeal(), 1000);
+            }
+
+            buildDynamicUI() {
+                // Build Scoreboard
+                this.els.scores.innerHTML = this.players.map(p => `
+                    <div class="text-center w-20 md:w-24 bg-slate-900/50 p-2 rounded-lg border border-slate-700">
+                        <h2 class="text-sm font-bold truncate ${p.color.text}">${p.name}</h2>
+                        <div class="text-2xl font-mono" id="score-${p.id}">0</div>
+                    </div>
+                `).join('');
+
+                // Build Board Tracks
+                this.els.board.innerHTML = '';
+                this.pegs = {};
+                this.players.forEach(p => {
+                    const row = document.createElement('div');
+                    row.className = 'track-row';
+                    // Label
+                    const lbl = document.createElement('div');
+                    lbl.className = `w-6 font-bold text-xs ${p.color.text} mr-2 text-right`;
+                    lbl.textContent = `P${this.players.indexOf(p)+1}`;
+                    row.appendChild(lbl);
+                    
+                    // Holes
+                    for (let i = 0; i < 24; i++) {
+                        const group = document.createElement('div');
+                        group.className = 'track-group';
+                        for (let j = 0; j < 5; j++) {
+                            const hole = document.createElement('div'); hole.className = 'board-hole'; group.appendChild(hole);
+                        }
+                        row.appendChild(group);
+                    }
+                    this.els.board.appendChild(row);
+                    
+                    // Pegs
+                    this.pegs[p.id] = { front: { pos: 0, el: this.createPeg(p.color.peg) }, back: { pos: 0, el: this.createPeg(p.color.peg) } };
+                    this.els.board.appendChild(this.pegs[p.id].front.el);
+                    this.els.board.appendChild(this.pegs[p.id].back.el);
+                });
+
+                // Build Opponent Hand Zones
+                this.els.opponents.innerHTML = '';
+                this.players.forEach(p => {
+                    if (p.id !== this.myId) {
+                        const cont = document.createElement('div');
+                        cont.className = 'flex flex-col items-center flex-1 min-w-[120px]';
+                        cont.innerHTML = `
+                            <div class="text-xs font-bold uppercase tracking-wider mb-2 ${p.color.text}">${p.name}</div>
+                            <div class="hand-container scale-75 transform origin-top" id="hand-${p.id}"></div>
+                        `;
+                        this.els.opponents.appendChild(cont);
+                    }
+                });
+            }
+
+            createPeg(bgGrad) {
+                const el = document.createElement('div');
+                el.className = 'board-peg'; el.style.background = bgGrad; el.style.display = 'none';
+                return el;
+            }
+
+            executeDeal() {
+                const deck = new Deck(); deck.shuffle();
+                const pCount = this.players.length;
+                const numCards = pCount === 2 ? 6 : 5;
+                
+                const handsData = {};
+                this.players.forEach(p => handsData[p.id] = deck.deal(numCards).map(c=>c.id));
+                
+                let initialCrib = [];
+                if (pCount === 3) initialCrib = deck.deal(1).map(c=>c.id);
+                
+                const starterCard = deck.deal(1)[0].id;
+                
+                this.broadcastAction('DEAL', { handsData, initialCrib, starterCard });
+            }
+
+            handleDeal(payload) {
+                this.phase = 'DISCARD';
+                this.els.waitText.classList.add('hidden');
+                document.getElementById('game-phase-text').textContent = "Phase: Discard";
+                
+                const dealer = this.players[this.dealerIndex];
+                this.els.dealer.textContent = dealer.name;
+                this.els.dealer.className = `font-bold ${dealer.color.text}`;
+                this.els.cribOwner.textContent = `(${dealer.name}'s)`;
+
+                this.hands = {};
+                this.unplayed = {};
+                this.networkDiscardsReady = {};
+                this.localDiscards = [];
+                this.starterCard = Card.fromId(payload.starterCard); // Store but don't show yet
+                this.crib = payload.initialCrib.map(Card.fromId);
+                
+                this.players.forEach(p => {
+                    this.hands[p.id] = payload.handsData[p.id].map(Card.fromId);
+                });
+
+                this.renderHands();
+                
+                this.els.cribZone.innerHTML = '<div class="text-slate-500 italic">Select cards for crib...</div>';
+                this.els.peggingZone.innerHTML = '';
+                this.els.starterZone.innerHTML = '';
+
+                // Handle local interactions
+                const localPlayer = this.players.find(p => p.id === this.myId);
+                if (localPlayer) {
+                    this.els.localHand.classList.add('highlight-zone');
+                    this.els.actionBtn.textContent = "Confirm Discard";
+                    this.els.actionBtn.classList.add('hidden');
+                    this.els.actionBtn.onclick = () => this.confirmLocalDiscard();
+                }
+
+                // If Host, trigger AIs
+                if (this.isHost) {
+                    this.players.filter(p => p.type === 'ai').forEach(ai => {
+                        setTimeout(() => this.executeAIDiscard(ai), 800 + Math.random() * 500);
+                    });
+                }
+            }
+
+            renderHands() {
+                this.players.forEach(p => {
+                    const container = p.id === this.myId ? this.els.localHand : document.getElementById(`hand-${p.id}`);
+                    if (!container) return;
+                    container.innerHTML = '';
+                    
+                    const hand = this.hands[p.id];
+                    hand.forEach(card => {
+                        let el;
+                        if (p.id === this.myId) {
+                            const isSelected = this.localDiscards.some(c => c.id === card.id);
+                            const isUnplayed = this.phase === 'DISCARD' || this.unplayed[p.id]?.some(c => c.id === card.id);
+                            el = card.createHTML((c, elem) => {
+                                if(this.phase === 'DISCARD') this.toggleDiscardSelect(c, elem);
+                                else if (this.phase === 'PEGGING' && this.players[this.currentTurnIndex].id === this.myId) {
+                                    if(this.pegCount + c.cribValue <= 31) this.sendAction('PLAY_CARD', { id: this.myId, cardId: c.id });
+                                }
+                            }, isSelected);
+                            if(!isUnplayed) el.classList.add('disabled');
+                            if(this.phase === 'PEGGING' && this.players[this.currentTurnIndex].id === this.myId && this.pegCount + card.cribValue > 31) el.classList.add('disabled');
+                        } else {
+                            const renderCard = new Card(card.suit, card.value);
+                            renderCard.isHidden = this.phase === 'DISCARD' || this.phase === 'PEGGING' && this.unplayed[p.id]?.some(c => c.id === card.id);
+                            el = renderCard.createHTML();
+                            if(this.phase === 'PEGGING' && !this.unplayed[p.id]?.some(c=>c.id === card.id)) el.classList.add('disabled');
+                        }
+                        container.appendChild(el);
+                    });
+                });
+            }
+
+            toggleDiscardSelect(card, element) {
+                const reqCards = this.players.length === 2 ? 2 : 1;
+                const idx = this.localDiscards.findIndex(c => c.id === card.id);
+                if (idx > -1) {
+                    this.localDiscards.splice(idx, 1); element.classList.remove('selected');
+                } else if (this.localDiscards.length < reqCards) {
+                    this.localDiscards.push(card); element.classList.add('selected');
+                }
+                this.els.actionBtn.classList.toggle('hidden', this.localDiscards.length !== reqCards);
+            }
+
+            confirmLocalDiscard() {
+                this.els.actionBtn.classList.add('hidden');
+                this.els.localHand.classList.remove('highlight-zone');
+                this.els.waitText.classList.remove('hidden');
+                this.sendAction('DISCARD', { id: this.myId, cardIds: this.localDiscards.map(c=>c.id) });
+            }
+
+            executeAIDiscard(ai) {
+                const reqCards = this.players.length === 2 ? 2 : 1;
+                const hand = [...this.hands[ai.id]].sort((a,b) => a.cribValue - b.cribValue);
+                // Basic AI: Keep highest values, discard lowest (not optimal but functional)
+                const discards = reqCards === 2 ? [hand[0], hand[1]] : [hand[0]];
+                this.sendAction('DISCARD', { id: ai.id, cardIds: discards.map(c=>c.id) });
+            }
+
+            handleDiscard(payload) {
+                this.networkDiscardsReady[payload.id] = payload.cardIds;
+                
+                if (this.isHost && Object.keys(this.networkDiscardsReady).length === this.players.length) {
+                    // All discarded, Host compiles result
+                    this.broadcastAction('ALL_DISCARDED', { discards: this.networkDiscardsReady });
+                }
+            }
+
+            handleAllDiscarded(payload) {
+                this.els.waitText.classList.add('hidden');
+                
+                // Move cards from hands to crib
+                for (let pid in payload.discards) {
+                    const ids = payload.discards[pid];
+                    this.hands[pid] = this.hands[pid].filter(c => !ids.includes(c.id));
+                    ids.forEach(id => this.crib.push(Card.fromId(id)));
+                    this.unplayed[pid] = [...this.hands[pid]];
+                }
+
+                // Render crib face down
+                this.els.cribZone.innerHTML = '';
+                this.crib.forEach((c, i) => {
+                    const hidden = new Card('hearts', 'A'); hidden.isHidden = true;
+                    const el = hidden.createHTML();
+                    el.style.position = i>0 ? 'absolute' : 'relative';
+                    if(i>0) { el.style.marginLeft=`${i*10}px`; el.style.marginTop=`${i*5}px`; }
+                    this.els.cribZone.appendChild(el);
+                });
+
+                // Reveal Starter
+                const sEl = this.starterCard.createHTML(); sEl.classList.remove('animate-deal');
+                this.els.starterZone.innerHTML = ''; this.els.starterZone.appendChild(sEl);
+                this.log(`Starter card is ${this.starterCard.value} of ${this.starterCard.suit}`);
+
+                if (this.starterCard.value === 'J') {
+                    if(this.isHost) this.checkScore(this.players[this.dealerIndex].id, 2, "His Heels");
+                }
+
+                this.startPegging();
+            }
+
+            startPegging() {
+                this.phase = 'PEGGING';
+                document.getElementById('game-phase-text').textContent = "Phase: Pegging";
+                this.peggingCards = [];
+                this.pegCount = 0;
+                this.els.pegCount.textContent = '0';
+                this.els.peggingZone.innerHTML = '';
+                
+                // Reset go state
+                this.players.forEach(p => this.goStated[p.id] = false);
+                this.lastPlayerToPlay = null;
+
+                // Left of dealer starts
+                this.currentTurnIndex = (this.dealerIndex + 1) % this.players.length;
+                this.renderHands();
+                this.processTurnUI();
+            }
+
+            processTurnUI() {
+                const turnPlayer = this.players[this.currentTurnIndex];
+                this.els.whoseTurn.textContent = turnPlayer.id === this.myId ? 'Your Turn' : `${turnPlayer.name}'s Turn`;
+                this.els.whoseTurn.className = `font-bold ${turnPlayer.color.text}`;
+
+                if (turnPlayer.id === this.myId) {
+                    this.els.peggingZone.classList.add('highlight-zone');
+                    const canPlay = this.unplayed[this.myId].some(c => this.pegCount + c.cribValue <= 31);
+                    if (!canPlay && this.unplayed[this.myId].length > 0) {
+                        this.els.goBtn.classList.remove('hidden');
+                        this.els.goBtn.onclick = () => { this.els.goBtn.classList.add('hidden'); this.sendAction('SAY_GO', {id: this.myId}); };
+                    }
+                } else {
+                    this.els.peggingZone.classList.remove('highlight-zone');
+                    this.els.goBtn.classList.add('hidden');
+                }
+
+                if (this.isHost && turnPlayer.type === 'ai') {
+                    setTimeout(() => this.executeAIPegging(turnPlayer), 1000);
+                }
+            }
+
+            executeAIPegging(ai) {
+                if (this.phase !== 'PEGGING' || this.players[this.currentTurnIndex].id !== ai.id) return;
+                
+                const playable = this.unplayed[ai.id].filter(c => this.pegCount + c.cribValue <= 31);
+                if (playable.length === 0) {
+                    this.sendAction('SAY_GO', { id: ai.id });
+                } else {
+                    // Smart-ish AI: look for 15 or 31, then pairs
+                    let chosen = playable.find(c => this.pegCount + c.cribValue === 15 || this.pegCount + c.cribValue === 31);
+                    if (!chosen && this.peggingCards.length > 0) {
+                        const last = this.peggingCards[this.peggingCards.length-1];
+                        chosen = playable.find(c => c.value === last.value);
+                    }
+                    if (!chosen) chosen = playable.sort((a,b) => b.cribValue - a.cribValue)[0];
+                    this.sendAction('PLAY_CARD', { id: ai.id, cardId: chosen.id });
+                }
+            }
+
+            handlePlayCard(payload) {
+                const p = this.players.find(x => x.id === payload.id);
+                const card = this.unplayed[p.id].find(c => c.id === payload.cardId);
+                
+                this.unplayed[p.id] = this.unplayed[p.id].filter(c => c.id !== card.id);
+                this.peggingCards.push(card);
+                this.pegCount += card.cribValue;
+                this.lastPlayerToPlay = p.id;
+                this.els.pegCount.textContent = this.pegCount;
+
+                const el = card.createHTML(); el.style.transform = `rotate(${(Math.random()-0.5)*15}deg)`;
+                this.els.peggingZone.appendChild(el);
+                
+                this.log(`${p.name} played ${card.value} (Count: ${this.pegCount})`);
+                this.renderHands();
+
+                if (this.isHost) {
+                    const pts = this.calculatePeggingPoints();
+                    if(pts > 0) this.checkScore(p.id, pts, "Pegging");
+                }
+
+                if (this.pegCount === 31) {
+                    this.log("Count is 31! Resetting.");
+                    setTimeout(() => this.resetPegging(true), 1000);
+                } else if (this.isEveryoneEmpty()) {
+                    if(this.isHost) this.checkScore(p.id, 1, "Last Card");
+                    setTimeout(() => this.endPeggingRound(), 1000);
+                } else {
+                    this.advanceTurn();
+                }
+            }
+
+            handleSayGo(payload) {
+                const p = this.players.find(x => x.id === payload.id);
+                this.log(`${p.name} says 'Go'.`);
+                this.goStated[p.id] = true;
+
+                // Check if all players with cards have said go
+                let allGo = true;
+                for (let pl of this.players) {
+                    if (this.unplayed[pl.id].length > 0 && !this.goStated[pl.id]) {
+                        allGo = false; break;
+                    }
+                }
+
+                if (allGo) {
+                    this.log("Everyone passed. Resetting count.", "text-yellow-400");
+                    if(this.isHost && this.lastPlayerToPlay) {
+                        this.checkScore(this.lastPlayerToPlay, 1, "Go");
+                    }
+                    setTimeout(() => this.resetPegging(false), 1000);
+                } else {
+                    this.advanceTurn();
+                }
+            }
+
+            advanceTurn() {
+                let attempts = 0;
+                do {
+                    this.currentTurnIndex = (this.currentTurnIndex + 1) % this.players.length;
+                    attempts++;
+                    if(attempts > this.players.length) break; // safeguard
+                } while (this.unplayed[this.players[this.currentTurnIndex].id].length === 0 || this.goStated[this.players[this.currentTurnIndex].id]);
+                
+                this.processTurnUI();
+            }
+
+            resetPegging(was31) {
+                this.peggingCards = [];
+                this.pegCount = 0;
+                this.els.pegCount.textContent = '0';
+                this.players.forEach(p => this.goStated[p.id] = false);
+                
+                const old = Array.from(this.els.peggingZone.children);
+                old.forEach(c => { c.style.opacity = '0.5'; c.style.transform = 'scale(0.8)'; });
+                if(old.length > 0) {
+                    const sep = document.createElement('div'); sep.className = 'w-1 h-12 bg-slate-500 mx-2 rounded';
+                    this.els.peggingZone.appendChild(sep);
+                }
+
+                if (this.isEveryoneEmpty()) {
+                    this.endPeggingRound();
+                } else {
+                    // Turn goes to player left of last player to play
+                    if(this.lastPlayerToPlay) {
+                         const idx = this.players.findIndex(p => p.id === this.lastPlayerToPlay);
+                         this.currentTurnIndex = idx;
+                    }
+                    this.lastPlayerToPlay = null;
+                    this.advanceTurn();
+                }
+            }
+            
+            isEveryoneEmpty() {
+                return this.players.every(p => this.unplayed[p.id].length === 0);
+            }
+
+            calculatePeggingPoints() {
+                let pts = 0; const len = this.peggingCards.length;
+                if (len === 0) return 0;
+                const last = this.peggingCards[len-1];
+
+                if (this.pegCount === 15) { pts += 2; this.log("15 for 2!", "text-green-400 font-bold"); }
+                if (this.pegCount === 31) { pts += 2; this.log("31 for 2!", "text-green-400 font-bold"); }
+
+                if (len >= 2 && this.peggingCards[len-2].value === last.value) {
+                    if (len >= 3 && this.peggingCards[len-3].value === last.value) {
+                        if (len >= 4 && this.peggingCards[len-4].value === last.value) { pts += 12; this.log("Double Pair Royal for 12!", "text-green-400 font-bold"); }
+                        else { pts += 6; this.log("Pair Royal for 6!", "text-green-400 font-bold"); }
+                    } else { pts += 2; this.log("Pair for 2!", "text-green-400 font-bold"); }
+                }
+
+                if (len >= 3) {
+                    for (let runLen = len; runLen >= 3; runLen--) {
+                        const subset = this.peggingCards.slice(len - runLen);
+                        const ranks = subset.map(c => c.rank).sort((a,b) => a-b);
+                        let isRun = true;
+                        for(let i=1; i<ranks.length; i++) { if(ranks[i] !== ranks[i-1] + 1) { isRun = false; break; } }
+                        if (isRun) { pts += runLen; this.log(`Run of ${runLen}!`, "text-green-400 font-bold"); break; }
+                    }
+                }
+                return pts;
+            }
+
+            endPeggingRound() {
+                this.phase = 'COUNTING';
+                this.els.peggingZone.classList.remove('highlight-zone');
+                document.getElementById('game-phase-text').textContent = "Phase: Counting";
+                this.els.whoseTurn.textContent = "Round Over";
+                
+                // Show hands
+                this.renderHands(); // Phase is not pegging, so all unhide
+                
+                this.els.nextPhaseBtn.classList.remove('hidden');
+                this.els.nextPhaseBtn.textContent = "Count Hands";
+                this.els.nextPhaseBtn.onclick = () => {
+                    this.els.nextPhaseBtn.classList.add('hidden');
+                    this.sendAction('NEXT_PHASE', { id: this.myId });
+                };
+
+                if (this.isHost) {
+                    this.players.filter(p => p.type === 'ai').forEach(ai => {
+                        this.sendAction('NEXT_PHASE', { id: ai.id });
+                    });
+                }
+            }
+
+            checkScore(playerId, amount, reason) {
+                // Host tracks scores and broadcasts state updates to ensure sync
+                if (amount <= 0) return;
+                const oldScore = this.scores[playerId];
+                this.scores[playerId] = Math.min(TargetScore, this.scores[playerId] + amount);
+                const newScore = this.scores[playerId];
+                
+                // Broadcast score update so everyone's board animates identically
+                this.broadcastAction('SYNC_SCORE', { id: playerId, amount, reason, oldScore, newScore });
+                this.applyScoreLocally(playerId, amount, reason, oldScore, newScore);
+            }
+
+            // Also catch custom action
+            onAction(type, payload) {
+                if (type === 'SYNC_SCORE') this.applyScoreLocally(payload.id, payload.amount, payload.reason, payload.oldScore, payload.newScore);
+                else if (type === 'GAME_OVER') this.showGameOver(payload.winnerId);
+                else {
+                    // call switch
+                    switch(type) {
+                        case 'LOBBY_SYNC': if(!this.isHost) document.getElementById('join-status').textContent = `In lobby...`; break;
+                        case 'START_GAME': this.handleStartGame(payload.players); break;
+                        case 'DEAL': this.handleDeal(payload); break;
+                        case 'DISCARD': this.handleDiscard(payload); break;
+                        case 'ALL_DISCARDED': this.handleAllDiscarded(payload); break;
+                        case 'PLAY_CARD': this.handlePlayCard(payload); break;
+                        case 'SAY_GO': this.handleSayGo(payload); break;
+                        case 'NEXT_PHASE': this.handleNextPhaseReady(payload); break;
+                        case 'PROCEED_COUNT': this.handleProceedCount(payload); break;
+                    }
+                }
+            }
+
+            applyScoreLocally(id, amount, reason, oldScore, newScore) {
+                this.scores[id] = newScore;
+                document.getElementById(`score-${id}`).textContent = newScore;
+                const p = this.players.find(x => x.id === id);
+                this.log(`${p.name} scores ${amount} for ${reason}`, 'text-emerald-400 font-bold');
+                
+                // Move Peg
+                const trackGroups = this.els.board.children[this.players.indexOf(p)].querySelectorAll('.board-hole');
+                let pegMove = this.pegs[id].front;
+                if (oldScore === 0) pegMove.el.style.display = 'block';
+                else if (oldScore === this.pegs[id].front.pos) {
+                    pegMove = this.pegs[id].back; pegMove.el.style.display = 'block';
+                    const tmp = this.pegs[id].front; this.pegs[id].front = this.pegs[id].back; this.pegs[id].back = tmp;
+                }
+                
+                pegMove.pos = newScore;
+                let target = newScore >= TargetScore ? null : trackGroups[newScore-1];
+                if(target) {
+                    target.appendChild(pegMove.el);
+                    pegMove.el.style.transform = 'scale(1.3) translateY(-10px)';
+                    setTimeout(() => pegMove.el.style.transform = 'scale(1) translateY(0)', 300);
+                }
+
+                if (newScore >= TargetScore && this.isHost) {
+                    this.broadcastAction('GAME_OVER', { winnerId: id });
+                    this.showGameOver(id);
+                }
+            }
+
+            handleNextPhaseReady(payload) {
+                this.readyForNextPhaseCount++;
+                if (this.isHost && this.readyForNextPhaseCount >= this.players.length) {
+                    this.readyForNextPhaseCount = 0;
+                    
+                    if (this.phase === 'COUNTING') {
+                        // Setup count queue
+                        this.countQueue = [];
+                        for(let i=1; i<=this.players.length; i++) {
+                            const pIndex = (this.dealerIndex + i) % this.players.length;
+                            this.countQueue.push({ id: this.players[pIndex].id, type: 'hand' });
+                        }
+                        this.countQueue.push({ id: this.players[this.dealerIndex].id, type: 'crib' });
+                        
+                        this.broadcastAction('PROCEED_COUNT', { queue: this.countQueue });
+                    } else if (this.phase === 'CRIB_COUNT') {
+                        // Start new round
+                        this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
+                        this.executeDeal();
+                    }
+                }
+            }
+
+            handleProceedCount(payload) {
+                this.els.waitText.classList.add('hidden');
+                
+                if (payload.queue.length === 0) {
+                    this.phase = 'CRIB_COUNT';
+                    this.els.nextPhaseBtn.classList.remove('hidden');
+                    this.els.nextPhaseBtn.textContent = "Start Next Round";
+                    this.els.nextPhaseBtn.onclick = () => {
+                        this.els.nextPhaseBtn.classList.add('hidden');
+                        this.sendAction('NEXT_PHASE', { id: this.myId });
+                    };
+                    if (this.isHost) {
+                        this.players.filter(p => p.type === 'ai').forEach(ai => this.sendAction('NEXT_PHASE', { id: ai.id }));
+                    }
+                    return;
+                }
+
+                this.countQueue = payload.queue;
+                const job = this.countQueue.shift(); // take first
+                const p = this.players.find(x => x.id === job.id);
+                
+                let cards = job.type === 'hand' ? this.hands[p.id] : this.crib;
+                if (job.type === 'crib') {
+                    this.els.cribZone.innerHTML = '';
+                    cards.forEach(c => {
+                        const el = c.createHTML(); el.classList.remove('animate-deal'); this.els.cribZone.appendChild(el);
+                    });
+                }
+                
+                const scoreInfo = this.evaluateHand(cards, this.starterCard, job.type === 'crib');
+                
+                this.showScoreModal(p, job.type, scoreInfo, () => {
+                    if (this.isHost) this.checkScore(p.id, scoreInfo.total, `${job.type} count`);
+                    
+                    // After modal close, Host pops the next count automatically to sync
+                    if (this.isHost) {
+                        setTimeout(() => this.broadcastAction('PROCEED_COUNT', { queue: this.countQueue }), 500);
+                    }
+                });
+            }
+
+            evaluateHand(hand, starter, isCrib) {
+                const cards = [...hand, starter];
+                let total = 0; let details = [];
+
+                const find15s = (arr, target, partial) => {
+                    let sum = partial.reduce((acc, val) => acc + val.cribValue, 0);
+                    if (sum === target) { total += 2; details.push(`15 (${partial.map(c=>c.value).join(',')}) : 2`); return; }
+                    if (sum >= target) return;
+                    for (let i = 0; i < arr.length; i++) find15s(arr.slice(i + 1), target, partial.concat([arr[i]]));
+                };
+                find15s(cards, 15, []);
+
+                for (let i=0; i<cards.length; i++) {
+                    for (let j=i+1; j<cards.length; j++) {
+                        if (cards[i].value === cards[j].value) { total += 2; details.push(`Pair (${cards[i].value}) : 2`); }
+                    }
+                }
+
+                let ranks = cards.map(c => c.rank).sort((a,b) => a-b);
+                let uniqueRanks = [...new Set(ranks)];
+                let maxRunLength = 0; let currentRun = 1;
+                for (let i = 1; i < uniqueRanks.length; i++) {
+                    if (uniqueRanks[i] === uniqueRanks[i-1] + 1) currentRun++;
+                    else { if (currentRun >= 3) maxRunLength = Math.max(maxRunLength, currentRun); currentRun = 1; }
+                }
+                if (currentRun >= 3) maxRunLength = Math.max(maxRunLength, currentRun);
+
+                if (maxRunLength >= 3) {
+                    let multiplier = 1;
+                    let runRanks = []; currentRun = 1; let tempRanks = [uniqueRanks[0]];
+                    for(let i=1; i<uniqueRanks.length; i++) {
+                         if (uniqueRanks[i] === uniqueRanks[i-1] + 1) { currentRun++; tempRanks.push(uniqueRanks[i]); } 
+                         else { if(currentRun === maxRunLength) runRanks = tempRanks; currentRun = 1; tempRanks = [uniqueRanks[i]]; }
+                    }
+                    if(currentRun === maxRunLength) runRanks = tempRanks;
+                    runRanks.forEach(r => { multiplier *= ranks.filter(rank => rank === r).length; });
+                    const runPoints = maxRunLength * multiplier;
+                    total += runPoints;
+                    details.push(`Run of ${maxRunLength} (x${multiplier}) : ${runPoints}`);
+                }
+
+                const handSuit = hand[0].suit;
+                const isHandFlush = hand.every(c => c.suit === handSuit);
+                if (isHandFlush && !isCrib) {
+                    if (starter.suit === handSuit) { total += 5; details.push(`Flush (5) : 5`); } 
+                    else { total += 4; details.push(`Flush (4) : 4`); }
+                } else if (isCrib && isHandFlush && starter.suit === handSuit) {
+                    total += 5; details.push(`Flush (5) : 5`);
+                }
+
+                const jack = hand.find(c => c.value === 'J' && c.suit === starter.suit);
+                if (jack) { total += 1; details.push(`His Nobs : 1`); }
+                if(total === 0) details.push("Nothing : 0");
+
+                return { total, details };
+            }
+
+            showScoreModal(player, type, scoreInfo, callback) {
+                const modal = document.getElementById('message-modal');
+                const content = document.getElementById('modal-content');
+                const title = document.getElementById('modal-title');
+                
+                title.textContent = `${player.name}'s ${type === 'crib' ? 'Crib' : 'Hand'}`;
+                title.className = `text-3xl font-bold mb-4 font-cinzel ${player.color.text}`;
+                
+                document.getElementById('modal-message').innerHTML = `Scores <span class="text-3xl font-bold text-yellow-400">${scoreInfo.total}</span> points.`;
+                
+                const detailsDiv = document.getElementById('modal-score-details');
+                detailsDiv.innerHTML = scoreInfo.details.map(d => `<div>${d}</div>`).join('');
+                detailsDiv.classList.remove('hidden');
+
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    content.classList.remove('scale-95', 'opacity-0');
+                    content.classList.add('scale-100', 'opacity-100');
+                }, 10);
+
+                // Auto-close for AI if host, to keep game moving quickly
+                let timeout = null;
+                if (this.isHost && player.type === 'ai') {
+                     timeout = setTimeout(() => document.getElementById('modal-btn').click(), 3000);
+                }
+
+                document.getElementById('modal-btn').onclick = () => {
+                    if(timeout) clearTimeout(timeout);
+                    content.classList.remove('scale-100', 'opacity-100');
+                    content.classList.add('scale-95', 'opacity-0');
+                    setTimeout(() => { modal.classList.add('hidden'); if(callback) callback(); }, 200);
+                };
+            }
+
+            showGameOver(winnerId) {
+                const winner = this.players.find(p => p.id === winnerId);
+                const modal = document.getElementById('message-modal');
+                const content = document.getElementById('modal-content');
+                
+                document.getElementById('modal-title').textContent = winnerId === this.myId ? 'Victory!' : `${winner.name} Wins!`;
+                document.getElementById('modal-title').className = `text-4xl font-bold mb-4 font-cinzel ${winner.color.text}`;
+                document.getElementById('modal-message').innerHTML = `${winner.name} reached 121 points first!`;
+                document.getElementById('modal-score-details').classList.add('hidden');
+                
+                const btn = document.getElementById('modal-btn');
+                btn.textContent = "Back to Lobby";
+                
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    content.classList.remove('scale-95', 'opacity-0');
+                    content.classList.add('scale-100', 'opacity-100');
+                }, 10);
+
+                btn.onclick = () => location.reload();
+            }
+        }
+
+        window.onload = () => new CribbageMultiplayer();
+    </script>
+</body>
+</html>
